@@ -1,0 +1,2 @@
+# The cluster login is replaced on commit by a local clean filter
+CLAUDE.md filter=private

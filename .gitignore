@@ -1,0 +1,33 @@
+# Environments and caches
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data, networks and tablebases: far too large for git, and rebuildable
+data/
+checkpoints/
+syzygy/
+logs/
+*.bin
+Lichess Elite Database/
+
+# Games and match output
+*.pgn
+LC0pgn
+
+# Local settings for the menu-bar trainer (machine-specific paths)
+idle_trainer/config.json
+
+# Built app, backups superseded by git history, unrelated folders
+dist/
+*.app/
+old*/
+new search batched with Q/
+untitled folder/
+files/
+files.zip
+FizzBuzz/
+
+# Sound effect of unknown origin; may not be ours to publish
+idle_trainer/assets/*.mp3
