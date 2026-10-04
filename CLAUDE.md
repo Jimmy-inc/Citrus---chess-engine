@@ -56,6 +56,19 @@ minor-piece endgames are the worst case.
 
 ---
 
+## Repository
+
+Public on GitHub as **Citrus**: https://github.com/Jimmy-inc/Citrus---chess-engine
+(this folder is the git repo, `main` branch). Code and docs only:
+`.gitignore` keeps out data, checkpoints, tablebases, PGNs, logs and old
+backup folders. Commits use the GitHub noreply email, set for this repo
+only. A local clean filter (`.gitattributes`, `filter.private` in
+`.git/config`) writes the cluster login as `UTORID` in the published copy
+of this file; the local copy keeps the real one. A fresh clone lacks the
+filter, so set it again before committing from there.
+
+---
+
 ## Two machines
 
 **MacBook Pro M4 Pro, 24GB** — `~/Desktop/chessbot`, venv at `.venv`.
