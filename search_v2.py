@@ -42,11 +42,14 @@ from encoding_v2 import encode_boards, policy_indices
 from quiescence import qsearch
 from endgame import probe as probe_tablebase
 
-DEFAULT_CKPT = "checkpoints/v2_best.pt"
+DEFAULT_CKPT = "checkpoints/mix_best.pt"     # the v2 net that ships
 DEFAULT_SIMS = 800
 DEFAULT_BATCH = 48
 
-C_PUCT = 2.0
+# Tuned Oct 4 with versus.py: 2.5 beat 2.0 by +14 Elo (+1 to +28) at 800
+# sims and was level at 1,600; 1.0 and 1.5 were clearly worse, 3.0 and 4.0
+# no better than 2.5.
+C_PUCT = 2.5
 DRAW_CONTEMPT = 0.0
 MATERIAL_WEIGHT = 0.0
 MATERIAL_SCALE = 3.0
@@ -377,15 +380,30 @@ def clear_cache():
 # ---------------------------------------------------------------- search
 
 
+class SearchLimit:
+    """
+    Ends a search from another thread while it runs: set `stopped`, or set
+    `deadline` (a time.time() value) after the search has started. The
+    search reads both once per batch. Pondering needs this - a search on
+    the opponent's time has no deadline until they play the expected move.
+    """
+
+    def __init__(self, deadline=None):
+        self.deadline = deadline
+        self.stopped = False
+
+
 @torch.no_grad()
 def run_search(model, root_board, sims, contempt=DRAW_CONTEMPT,
                material=MATERIAL_WEIGHT, c_puct=C_PUCT,
                batch_size=DEFAULT_BATCH, quiesce=QUIESCE_DEPTH,
                syzygy=SYZYGY_PATH, smoothing=POLICY_SMOOTHING,
                forced_depth=FORCED_VISIT_DEPTH, deadline=None,
-               min_sims=MIN_SIMS_BEFORE_DEADLINE, fpu=FPU_REDUCTION):
+               min_sims=MIN_SIMS_BEFORE_DEADLINE, fpu=FPU_REDUCTION,
+               limit=None):
     """
-    Run up to `sims` simulations, stopping early if `deadline` passes.
+    Run up to `sims` simulations, stopping early if `deadline` passes, or
+    when `limit` (a SearchLimit) is stopped or its deadline passes.
 
     A deadline lets the caller spend a time budget rather than guessing how
     many simulations fit in it - the difference between using the whole
@@ -418,6 +436,12 @@ def run_search(model, root_board, sims, contempt=DRAW_CONTEMPT,
         if (deadline is not None and done >= min_sims
                 and time.time() >= deadline):
             break
+        if limit is not None:
+            if limit.stopped:
+                break
+            if (limit.deadline is not None and done >= min_sims
+                    and time.time() >= limit.deadline):
+                break
         want = min(batch_size, sims - done)
         pending = []
         seen = set()

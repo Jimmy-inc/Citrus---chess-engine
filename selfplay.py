@@ -31,11 +31,11 @@ labeller never mistakes a random ply for something the net decided to play.
 Options:
     --games     games to play                                 (default 20)
     --pgn       where to write them                (default selfplay.pgn)
-    --ckpt      checkpoint to play        (default checkpoints/v2_best.pt)
+    --ckpt      checkpoint to play       (default checkpoints/mix_best.pt)
     --sims      simulations a move                           (default 800)
     --opening   random plies before the net takes over          (default 6)
     --maxmoves  moves a side before calling it a draw          (default 150)
-    --cpuct     exploration constant                         (default 2.0)
+    --cpuct     exploration constant                         (default 2.5)
     --contempt  draw contempt                                (default 0.0)
     --material  material nudge                               (default 0.0)
     --quiesce   quiescence depth                               (default 0)
@@ -123,7 +123,7 @@ def play_game(model, opening, settings):
 def main():
     settings = {
         "sims": arg("--sims", 800, int),
-        "cpuct": arg("--cpuct", 2.0, float),
+        "cpuct": arg("--cpuct", engine_v2.C_PUCT, float),
         "contempt": arg("--contempt", 0.0, float),
         "material": arg("--material", 0.0, float),
         "quiesce": arg("--quiesce", 0, int),
@@ -132,7 +132,7 @@ def main():
         "syzygy": arg("--syzygy", "syzygy"),
     }
     games = arg("--games", 20, int)
-    ckpt_path = arg("--ckpt", "checkpoints/v2_best.pt")
+    ckpt_path = arg("--ckpt", engine_v2.DEFAULT_CKPT)
     opening_plies = arg("--opening", 6, int)
     pgn_path = arg("--pgn", "selfplay.pgn")
     quiet = "--quiet" in sys.argv

@@ -17,9 +17,17 @@ Try it by hand:
 Time management estimates how many simulations fit the budget from how fast
 recent searches actually ran, rather than assuming a rate. Given "go nodes N"
 it runs exactly N simulations, which is what you want for reproducible tests.
+
+Pondering: searches run in a background thread, so "stop" and "ponderhit"
+arrive while one is running. "go ponder" searches the position after the
+opponent's expected reply with no deadline and stays silent; "ponderhit"
+(they played it) gives that search its normal time budget from then, so
+everything searched on their clock counts; "stop" (they did not) ends it.
+"bestmove" names the expected reply ("ponder ...") for the GUI to ponder on.
 """
 
 import sys
+import threading
 import time
 
 import torch
@@ -30,11 +38,14 @@ import search_v2 as engine
 ENGINE_NAME = "chessbot-v2"
 ENGINE_AUTHOR = "jimmy"
 
-DEFAULT_CKPT = "checkpoints/v2_best.pt"
+DEFAULT_CKPT = engine.DEFAULT_CKPT
 DEFAULT_SIMS = 800
 MIN_SIMS = 32
 MAX_SIMS = 300_000
 MOVES_TO_GO = 30          # assumed moves remaining when budgeting the clock
+# Simulations a ponder search may run before it waits for the opponent: about
+# a minute at server speed, and a bound on the tree's memory.
+PONDER_SIMS = 150_000
 
 
 def out(line):
@@ -61,6 +72,13 @@ class Engine:
         self.channels = 0
         self.step = 0
         self.sims_per_second = 1500.0     # revised from measured searches
+
+        # The search running in the background, if any, and its controls.
+        self.search = None
+        self.limit = None
+        self.pondering = False
+        self.ponder_tokens = None
+        self.ponder_board = None
 
     def load(self):
         if self.model is not None:
@@ -100,6 +118,7 @@ class Engine:
         out(f"option name Forced type spin default "
             f"{engine.FORCED_VISIT_DEPTH} min 0 max 4")
         out(f"option name Syzygy type string default {engine.SYZYGY_PATH}")
+        out("option name Ponder type check default false")
         out("uciok")
 
     def cmd_setoption(self, tokens):
@@ -113,8 +132,12 @@ class Engine:
         key = name.strip().lower()
         try:
             if key == "checkpoint":
-                self.ckpt_path = value.strip()
-                self.model = None            # reload on the next search
+                # lichess-bot sends this at the start of every game, after
+                # the handshake has already loaded the default. Reloading
+                # the same file would cost seconds of the first move's clock.
+                if value.strip() != self.ckpt_path:
+                    self.ckpt_path = value.strip()
+                    self.model = None        # reload on the next search
             elif key == "sims":
                 self.sims = max(MIN_SIMS, min(MAX_SIMS, int(value)))
             elif key == "cpuct":
@@ -161,7 +184,7 @@ class Engine:
                 except ValueError:
                     break
 
-    def budget_sims(self, tokens):
+    def budget_sims(self, tokens, board):
         """
         Returns (simulation cap, seconds) for this move.
 
@@ -185,9 +208,9 @@ class Engine:
         if "movetime" in params:
             seconds = params["movetime"] / 1000.0
         elif "wtime" in params or "btime" in params:
-            ours = params.get("wtime" if self.board.turn == chess.WHITE
+            ours = params.get("wtime" if board.turn == chess.WHITE
                               else "btime", 60_000) / 1000.0
-            inc = params.get("winc" if self.board.turn == chess.WHITE
+            inc = params.get("winc" if board.turn == chess.WHITE
                              else "binc", 0) / 1000.0
             togo = params.get("movestogo", MOVES_TO_GO) or MOVES_TO_GO
             seconds = ours / togo + inc * 0.8
@@ -202,37 +225,94 @@ class Engine:
         return max(MIN_SIMS, min(MAX_SIMS, cap)), seconds
 
     def cmd_go(self, tokens):
+        # One search at a time. A ponder search only ends when told to.
+        if self.pondering:
+            self.cmd_stop()
+        self.wait()
         self.load()
 
-        if self.board.is_game_over(claim_draw=True):
+        ponder = "ponder" in tokens
+        board = self.board.copy()
+        self.limit = engine.SearchLimit()
+        self.pondering = ponder
+        if ponder:
+            self.ponder_tokens = tokens
+            self.ponder_board = board
+        self.search = threading.Thread(target=self.think,
+                                       args=(board, tokens, ponder),
+                                       daemon=True)
+        self.search.start()
+
+    def think(self, board, tokens, ponder):
+        limit = self.limit
+
+        def hold():
+            # UCI: while pondering, say nothing until stop or ponderhit.
+            while ponder and self.pondering and not limit.stopped:
+                time.sleep(0.005)
+
+        if board.is_game_over(claim_draw=True):
+            hold()
             out("bestmove 0000")
             return
 
-        sims, seconds = self.budget_sims(tokens)
+        if ponder:
+            sims = PONDER_SIMS                 # no deadline until ponderhit
+        else:
+            sims, seconds = self.budget_sims(tokens, board)
+            if seconds:
+                limit.deadline = time.time() + seconds
 
         start = time.time()
-        deadline = start + seconds if seconds else None
-        root = engine.run_search(self.model, self.board, sims,
+        root = engine.run_search(self.model, board, sims,
                                  self.contempt, self.material, self.cpuct,
                                  batch_size=self.batch, quiesce=self.quiesce,
                                  syzygy=self.syzygy, smoothing=self.smoothing,
-                                 forced_depth=self.forced_depth,
-                                 deadline=deadline)
+                                 forced_depth=self.forced_depth, limit=limit)
+        hold()                     # ran out of simulations before they moved
         elapsed = max(time.time() - start, 1e-6)
         actual = engine.visit_count(root)
 
-        # Fold the measured rate into the estimate for the next move.
-        self.sims_per_second = (0.7 * self.sims_per_second
-                                + 0.3 * (actual / elapsed))
+        # Fold the measured rate into the estimate for the next move. A
+        # ponder search's time includes waiting on the opponent, so skip it.
+        if not ponder:
+            self.sims_per_second = (0.7 * self.sims_per_second
+                                    + 0.3 * (actual / elapsed))
 
         move, ranked = engine.choose(root)
         score = -ranked[0][1].value
+        # The reply this search expects, for the GUI to ponder on next.
+        replies = ranked[0][1].children or {}
+        reply = max(replies.items(), key=lambda kv: kv[1].visits,
+                    default=(None, None))
+        reply = reply[0] if reply[1] is not None and reply[1].visits else None
         # nodes and nps are the real counts, so the log shows whether the
         # budget was actually spent rather than what was planned.
         out(f"info depth 1 nodes {actual} nps {int(actual/elapsed)} "
             f"time {int(elapsed*1000)} score cp {int(score * 400)} "
-            f"pv {move.uci()}")
-        out(f"bestmove {move.uci()}")
+            f"pv {move.uci()}" + (f" {reply.uci()}" if reply else ""))
+        out(f"bestmove {move.uci()}"
+            + (f" ponder {reply.uci()}" if reply else ""))
+
+    def cmd_ponderhit(self):
+        """They played the expected move: the ponder search becomes this
+        move's search, with the normal budget counted from now."""
+        if self.search is None or not self.pondering:
+            return
+        _, seconds = self.budget_sims(self.ponder_tokens, self.ponder_board)
+        self.limit.deadline = time.time() + (seconds or 0)
+        self.pondering = False
+
+    def cmd_stop(self):
+        if self.search is not None:
+            self.limit.stopped = True
+            self.pondering = False
+            self.wait()
+
+    def wait(self):
+        if self.search is not None:
+            self.search.join()
+            self.search = None
 
 
 def main():
@@ -251,17 +331,24 @@ def main():
             state.load()
             out("readyok")
         elif command == "setoption":
+            state.cmd_stop()
             state.cmd_setoption(tokens)
         elif command == "ucinewgame":
+            state.cmd_stop()
             state.board = chess.Board()
         elif command == "position":
+            state.cmd_stop()             # a GUI should have sent stop first
             state.cmd_position(tokens)
         elif command == "go":
             state.cmd_go(tokens)
-        elif command in ("stop", "ponderhit"):
-            pass          # searches here are not interruptible
+        elif command == "ponderhit":
+            state.cmd_ponderhit()
+        elif command == "stop":
+            state.cmd_stop()
         elif command == "quit":
             break
+
+    state.cmd_stop()
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ Options:
     --pgn     games to replay; quote globs     (default data/sp2_*.pgn)
     --games   how many games                                  (default 2)
     --sims    simulations per search                       (default 3000)
-    --ckpt    checkpoint                (default checkpoints/v2_best.pt)
+    --ckpt    checkpoint               (default checkpoints/mix_best.pt)
 """
 
 import glob
@@ -133,7 +133,7 @@ def main():
     shared = ["--pgn", arg("--pgn", "data/sp2_*.pgn"),
               "--games", str(arg("--games", 2, int)),
               "--sims", str(arg("--sims", 3000, int)),
-              "--ckpt", arg("--ckpt", "checkpoints/v2_best.pt")]
+              "--ckpt", arg("--ckpt", "checkpoints/mix_best.pt")]
 
     print(f"old code: {os.path.abspath(folders['old'])}")
     print(f"new code: {os.path.abspath(folders['new'])}")

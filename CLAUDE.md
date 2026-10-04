@@ -17,7 +17,8 @@ versa. Everything current is v2.
 
 | checkpoint | encoding | what it is |
 |---|---|---|
-| `checkpoints/lc0_best.pt` | v2 | **current best.** v2_best fine-tuned on Leela data |
+| `checkpoints/mix_best.pt` | v2 | **current best, the v2 that ships.** v2_best fine-tuned on self-play weakness data |
+| `checkpoints/lc0_best.pt` | v2 | v2_best fine-tuned on Leela data — measured weaker |
 | `checkpoints/v2_best.pt` | v2 | 12×256 trained on 200M Stockfish evals, 7.2 epochs |
 | `checkpoints/evalfull_best.pt` | v1 | the old 6×128 net, still what Lichess runs |
 
@@ -45,8 +46,22 @@ versa. Everything current is v2.
   scored 49.9% with it against long_mix2's 52.6% over the same 1,114
   seed-1 openings (−19 Elo, ±21, so not conclusive either way; Oct 2).
   The two runs also differ in code version (BN folding, cache), so later
-  games are not perfectly paired. A direct `versus.py` test is the next
-  step before deciding whether the search should keep the fix.
+  games are not perfectly paired. The direct `versus.py` test then
+  settled it: **neutral**, −3 Elo (−21 to +15) over 642 games at 400 sims
+  (Oct 4). The fix stays, as the lookup that matches training.
+
+- **cpuct tuned to 2.5** (Oct 4, `versus.py`, mix_best, each against 2.0,
+  seeds 1 and 2 pooled): at 800 sims 1.0 −102, 1.5 −45, **2.5 +14 (+1 to
+  +28)**, 3.0 +9, 4.0 −5; at 1,600 sims 2.5 +3 and 3.0 −6, both within
+  noise. The curve is flat between 2.0 and 3.0, and the setting matters
+  less as search grows, so expect only a few Elo at Lichess sim counts.
+
+- **A preview fine-tune on mined mistakes made the net weaker** (Oct 4).
+  `hardprev`: mix_best + 4,000 steps at lr 1e-4 on a mix of 66k
+  `mine_hard.py` mistakes (>20cp) at 10% with rehearsal. Head to head
+  against mix_best: 44.1%, −41 Elo (−77 to −6) after 204 games. Against
+  Stockfish 1,500 nodes: 39.9% after 169 games, where mix_best with the
+  same settings scored 49.9%. Cause not yet known.
 
 **The known weakness, seen repeatedly: conversion.** The net reaches
 winning positions and fails to finish them, usually shuffling into a
@@ -161,7 +176,7 @@ AlphaZero distribute theirs.
 - `mix_data.py` — blends weakness records with rehearsal data (25/75)
 - `bench_search.py` — search speed, old code against new
 
-**v1, still used for the deployed Lichess bot**
+**v1, retired (the bot has run v2 since Sep)**
 
 `train.py`, `train_evals.py`, `finetune.py`, `search.py`,
 `search_batched.py`, `play.py`, `match.py`, `print_match.py`, `analyse.py`,
@@ -259,12 +274,26 @@ The bot lives at `~/Desktop/lichess-bot`, own venv, `config.yml` points
 a `Checkpoint`, so it plays the chosen net rather than `uci_v2.py`'s own
 default (`v2_best.pt`). On the cluster copy (`~/lichess-bot/config.yml`,
 the one in use since Sep 15) that is `checkpoints/mix_best.pt`; the
-engine logs `info string loaded checkpoint …` at the start of each game. `search_v2.load`
+engine logs `info string loaded checkpoint …` at the start of each game.
+Since Oct 4 the defaults are the shipped values — `search_v2.DEFAULT_CKPT`
+is `mix_best.pt`, `C_PUCT` 2.5, castling fix on, FPU off, draws only once
+they happen — so the bot needs no `uci_options` beyond the checkpoint, and
+`setoption Checkpoint` no longer reloads a net that is already loaded
+(before, every game loaded `v2_best` at the handshake, then `mix_best`
+again on the first move's clock). `search_v2.load`
 rejects v1 checkpoints outright, which is better than silently misplaying.
 
 ```bash
 cd ~/Desktop/lichess-bot && source .venv/bin/activate && python lichess-bot.py
 ```
+
+**Pondering** (Oct 4): `uci_v2.py` runs searches in a background thread,
+so it handles `go ponder` (search the position after the expected reply,
+silently, no deadline), `ponderhit` (the normal budget starts now; the
+search keeps everything done on the opponent's clock) and `stop`, and its
+`bestmove` names the expected reply. Enable with `ponder: true` under
+`engine:` in lichess-bot's `config.yml`. A ponder search caps at 150k
+simulations (`PONDER_SIMS`) and then waits.
 
 Time management searches against a **deadline**, not a fixed simulation
 count, so the full clock allocation gets used. `info` lines report measured
@@ -296,8 +325,15 @@ v2_best against Stockfish); the faster search from Sep 30 (~700 → 1,600–
 partway through the day (that day: rapid +21 −8, +25). Classical is
 meaningless here: a game was stopped midway against a lower-rated
 opponent, and 24 games is still provisional-sized. The bot was stopped
-Oct 2 to free its GPU; it also times out a lot, which is still to be
-investigated and has probably cost rating throughout.
+Oct 2 to free its GPU. Its many losses on time were mostly
+self-inflicted: stopping the job mid-game kills the engine while Lichess's
+clock runs on. The bot's own log showed no game timeouts, only ~60
+dropped event-stream connections (reconnected automatically).
+
+**Stop the bot gently:** `scancel --full --signal=INT JOBID` sends the
+Ctrl-C that makes lichess-bot stop taking challenges and finish its games
+before exiting; plain `scancel` (or hitting `--time`) forfeits any game in
+progress.
 
 Rows are only comparable if the bot ran on the same host. From Sep 15 it
 runs on the cluster (`~/lichess-bot`, submitted with `sbatch --gres gpu`),

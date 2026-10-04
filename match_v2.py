@@ -16,8 +16,8 @@ Options:
     --games     games to play, rounded up to an even number    (default 20)
     --sims      simulations per move                          (default 800)
     --nodes     node limit for Stockfish - the strength dial  (default 1000)
-    --ckpt      checkpoint to play              (default checkpoints/v2_best)
-    --cpuct     exploration constant                          (default 2.0)
+    --ckpt      checkpoint to play          (default checkpoints/mix_best.pt)
+    --cpuct     exploration constant                          (default 2.5)
     --contempt  draw contempt                                   (default 0)
     --material  material weight in leaf evaluations             (default 0)
     --quiesce   plies of quiescence search                      (default 0)
@@ -167,7 +167,7 @@ def main():
     settings = {
         "sims": arg("--sims", 800, int),
         "nodes": arg("--nodes", 1000, int),
-        "cpuct": arg("--cpuct", 2.0, float),
+        "cpuct": arg("--cpuct", engine_v2.C_PUCT, float),
         "contempt": arg("--contempt", 0.0, float),
         "material": arg("--material", 0.0, float),
         "quiesce": arg("--quiesce", 0, int),
@@ -177,7 +177,7 @@ def main():
         "syzygy": arg("--syzygy", "syzygy"),
         "fpu": arg("--fpu", None, float),
     }
-    ckpt_path = arg("--ckpt", "checkpoints/v2_best.pt")
+    ckpt_path = arg("--ckpt", engine_v2.DEFAULT_CKPT)
     opening_plies = arg("--opening", 6, int)
     pgn_path = arg("--pgn")
     # Matches comparing different nets should share a seed, so every net

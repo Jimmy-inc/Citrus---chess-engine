@@ -19,8 +19,9 @@ AlphaZero scheme: 4,672 outputs, one per origin square and move type. The
 value head is a single tanh output.
 
 **The search.** PUCT Monte Carlo tree search, batched 48 leaves at a time
-with virtual loss so the GPU sees full batches. Draws only count once they
-happen. Network results are cached between moves, BatchNorm is folded into
+with virtual loss so the GPU sees full batches, with the exploration
+constant tuned by self-play (cpuct 2.5). Draws only count once they happen.
+It ponders on the opponent's time through the UCI protocol. Network results are cached between moves, BatchNorm is folded into
 the convolutions, and positions are encoded a batch at a time: around 2,700
 simulations a second on an M4 Pro, 1,600–2,500 on an RTX A4000 server node.
 
@@ -49,7 +50,9 @@ paired random openings:
 | `mix_best` (+ self-play weakness fine-tune) | 1,114 | 52.6% | +18 |
 
 That is +62 Elo (±21) from the weakness fine-tune. A Leela-data fine-tune
-was tried and made the net weaker.
+and a fine-tune on mistakes mined from the evaluation database both made the
+net weaker. Every measurement, including the search tuning, is in
+[RESULTS.md](RESULTS.md).
 
 ## Files
 
