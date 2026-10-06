@@ -96,3 +96,7 @@ each change of net:
 |---|---|---|---|---|
 | Sep 29 | `v2_best` | 2282 | 2163 | 365 |
 | Oct 2 | `mix_best` (faster search part-way through) | 2437 | 2262 | 523 |
+| Oct 6 | **v2 final**: `mix_best`, cpuct 2.5, castling fix, pondering | **2514** | 2281 | 604 |
+
+Rapid passed 2500 on the final v2 settings: +77 over 78 games after the
+Oct 2 snapshot, rating deviation 45.

@@ -167,6 +167,15 @@ AlphaZero distribute theirs.
 
 - `selfplay.py` — the net against itself, PGN with its evals
 - `label_weak.py` — Stockfish flags blunders and misjudged positions
+- `label_all.py` — the successor to `label_weak.py` (Oct 6). `label` runs
+  Stockfish over every position once and keeps everything: best move and
+  score, the played move scored by the same search at the same depth, the
+  net's eval, mate distances. Resumable, writes as it goes. `select` applies
+  a rule afterwards: the new one (played move over 20cp worse than best,
+  uncapped; slower or lost forced mates as "conversion"; misjudged on the
+  −1..+1 scale) or `--rule old`, which reproduces `label_weak.py` exactly
+  (verified flag-for-flag). Its report gives blunders >50cp per 100 moves,
+  the quality measure to compare across rounds. ~1.45× slower to label.
 - `mine_hard.py` — weakness data from `evals_d22.bin` without self-play:
   `score` (value error and policy surprise for every record), `mistakes`
   (searches the most surprising positions; where the bot's move differs,
@@ -311,6 +320,7 @@ mostly classes as rapid.
 |---|---|---|---|---|---|---|
 | 2026-09-29 | `v2_best.pt` (cluster copy, step 2,744,000) | 2282 (237) | 2163 (96) | 2418? (12) | 2138? (10) | 365 |
 | 2026-10-02 | `mix_best.pt` (step 12,000), search changing underneath — see below | **2437** (360) | 2262 (115) | 2419? (24) | 2138? (10) | 523 |
+| 2026-10-06 | **v2 final**: `mix_best.pt`, cpuct 2.5, castling fix, pondering | **2514** (438) | 2281 (126) | 2463 (30) | 2138? (10) | 604 in these pools |
 
 The last days on v2: Sep 16, rapid +28 =4 −18 (to 2215); Sep 17, rapid
 +23 =1 −5 (to 2282, +67), blitz 7 wins from 7, classical +1 −1. Sep 16
@@ -329,6 +339,13 @@ Oct 2 to free its GPU. Its many losses on time were mostly
 self-inflicted: stopping the job mid-game kills the engine while Lichess's
 clock runs on. The bot's own log showed no game timeouts, only ~60
 dropped event-stream connections (reconnected automatically).
+
+The v2-final stint, Oct 4 – Oct 6: rapid **2437 → 2514 (+77) over 78
+games**, passing 2500; blitz +19 over 11; classical 2419? → 2463 over 6,
+no longer provisional. Rapid RD 45. All rapid games to date: 62% won, 6%
+drawn, average opponent 2121. Mostly one setup throughout: a few games
+on Oct 4 ran before pondering was switched on (job 353); everything since
+(job 354) has the full v2 settings.
 
 **Stop the bot gently:** `scancel --full --signal=INT JOBID` sends the
 Ctrl-C that makes lichess-bot stop taking challenges and finish its games
