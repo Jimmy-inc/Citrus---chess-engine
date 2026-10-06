@@ -73,7 +73,7 @@ minor-piece endgames are the worst case.
 
 ## Repository
 
-Public on GitHub as **Citrus**: https://github.com/Jimmy-inc/Citrus---chess-engine
+Public on GitHub as **Citrus**: https://github.com/Jimmy-inc/Citrus-chess-engine
 (this folder is the git repo, `main` branch). Code and docs only:
 `.gitignore` keeps out data, checkpoints, tablebases, PGNs, logs and old
 backup folders. Commits use the GitHub noreply email, set for this repo
